@@ -1,0 +1,6 @@
+ssh-keygen -y -f path/to/harish.pem > path/to/harish.pub
+resource "aws_key_pair" "my_key_pair" {
+  key_name   = "harish-key"  # Replace with your desired key name
+  public_key = file("path/to/harish.pub")  # Use the path to the extracted public key file
+}
+
