@@ -13,38 +13,47 @@ resource "aws_security_group" "web" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+  # Allow SSH traffic (port 22)
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 resource "aws_key_pair" "my_key_pair" {
   key_name   = "harish-key"  # Replace with your desired key name
-  public_key = file("/root/.ssh/harish.pub")  # Replace with the path to your harish.pem public key file
+  public_key = file("/home/ec2-user/harish.pub")  # Replace with the path to your harish.pem public key file
 }
 
-resource "aws_launch_configuration" "example" {
+# Create a Launch Template
+resource "aws_launch_template" "example" {
   name_prefix          = "example-"
   image_id             = "ami-067c21fb1979f0b27"  # Replace with your desired AMI
   instance_type        = "t2.micro"               # Replace with your desired instance type
-  security_groups      = [aws_security_group.web.id]
   key_name             = aws_key_pair.my_key_pair.key_name  # Use the key pair name defined above
-  user_data            = <<-EOF
-                        #!/bin/bash
-                        yum update -y
-                        yum install -y httpd
-                        systemctl start httpd
-                        systemctl enable httpd
-                        yum install -y docker
-                        systemctl start docker
-                        echo "this is a system configuration" >> clickops.conf
-                        echo "<h1> welcome to clickops technologies , this website is running from \$(hostname -f) </h1>" > /var/www/html/clickops.html
-                        EOF
-  lifecycle {
-    create_before_destroy = true
+  user_data            = base64encode(file("/home/ec2-user/user_data_script.sh"))  # Path to your new.sh file
+  
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size           = 30
+      delete_on_termination = true
+      encrypted             = false
+    }
   }
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups            = [aws_security_group.web.id]
+}
 }
 
 resource "aws_autoscaling_group" "example" {
   name_prefix         = "example-"
-  launch_configuration = aws_launch_configuration.example.name
+  launch_template {
+    id = aws_launch_template.example.id
+  }
   min_size            = 1
   max_size            = 3
   desired_capacity    = 1
@@ -119,12 +128,11 @@ resource "aws_autoscaling_attachment" "example" {
   lb_target_group_arn   = aws_lb_target_group.example.arn
 }
 
-
-
 output "load_balancer_dns_name" {
   value = aws_lb.example.dns_name
 }
 
 output "instance_user_data" {
-  value = aws_launch_configuration.example.user_data
+  value = aws_launch_template.example.user_data
 }
+
